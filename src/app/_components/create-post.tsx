@@ -1,27 +1,67 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 import { api } from "~/trpc/react";
+import { usePostsContext } from "../contexts/hooks";
 
 export function CreatePost() {
-  const router = useRouter();
   const [name, setName] = useState("");
 
+  const { posts, postToEdit, setPostToEdit, setPosts } = usePostsContext();
+
+  useEffect(() => {
+    if (postToEdit) {
+      setName(postToEdit.name);
+    }
+  }, [postToEdit]);
+
   const createPost = api.post.create.useMutation({
-    onSuccess: () => {
-      router.refresh();
+    onSuccess: (data) => {
       setName("");
+      if (Array.isArray(data) && data.length > 0) {
+        const [post] = data;
+
+        const newPosts = [post,...posts];
+        setPosts(newPosts);
+      }
     },
   });
 
+  const updatePost = api.post.updatePost.useMutation({
+    onSuccess: (data, variables) => {
+      setName("");
+      setPostToEdit(null);
+      if (Array.isArray(data) && data.length > 0) {
+        const [post] = data;
+
+        if (post) {
+          const newPosts = posts.map((p: any) => {
+            if (p.id === variables.id) {
+              return { ...p, name: post.name }
+            }
+            return p;
+          });
+
+          setPosts(newPosts);
+        }
+      }
+    }
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+
+    if (postToEdit) {
+      updatePost.mutate({ name, id: postToEdit.id });
+    } else {
+      createPost.mutate({ name });
+    }
+  }
+
   return (
     <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        createPost.mutate({ name });
-      }}
+      onSubmit={handleSubmit}
       className="flex flex-col gap-2"
     >
       <input
@@ -34,9 +74,9 @@ export function CreatePost() {
       <button
         type="submit"
         className="rounded-full bg-white/10 px-10 py-3 font-semibold transition hover:bg-white/20"
-        disabled={createPost.isLoading}
+        disabled={createPost.isLoading || updatePost.isLoading}
       >
-        {createPost.isLoading ? "Submitting..." : "Submit"}
+        {(createPost.isLoading || updatePost.isLoading) ? "Submitting..." : "Submit"}
       </button>
     </form>
   );
